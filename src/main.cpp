@@ -98,6 +98,7 @@ DynamicJsonDocument getInfoJson()
     system["deviceId"] = DEVICE_ID;
     system["freeHeap"] = ESP.getFreeHeap(); // in V
     system["time"] = NTP.getTimeDateStringForJS();
+    system["uptime"] = NTP.getUptimeString();
 
     // network
     JsonObject network = doc.createNestedObject("network");
@@ -293,7 +294,7 @@ void setupWebserver()
         request->send(SPIFFS, "/wifi-password", "text/plain", false);
     });*/
 
-    server.on("/info", HTTP_GET, [](AsyncWebServerRequest *request) {
+    server.on("/api/info", HTTP_GET, [](AsyncWebServerRequest *request) {
         auto infoJson = getInfoJson();
 
         StringStream stream;
