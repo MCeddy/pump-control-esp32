@@ -21,7 +21,7 @@
 
       <section id="device-info">
         <h2>Device Info</h2>
-        <p>Device ID: <strong id="device-id-value">n.a.</strong></p>
+        <p>device ID: <strong id="device-id-value">n.a.</strong></p>
 
         <div class="input-group">
           <span class="input-group-text">wifi signal</span>
@@ -29,15 +29,18 @@
             <div
               class="progress-bar"
               role="progressbar"
-              style="width: 25%"
-              aria-valuenow="25"
+              style="width: 0%"
+              aria-valuenow="0"
               aria-valuemin="0"
               aria-valuemax="100"
             >
-              25%
+              0%
             </div>
           </div>
         </div>
+
+        <p>time: <span id="time-value">n.a.</span></p>
+        <p>uptime: <span id="uptime-value">n.a.</span></p>
       </section>
 
       <h2>Manual start</h2>
@@ -101,6 +104,12 @@
           "aria-valuenow",
           info.network.wifiQuality
         );
+
+        const timeValue = document.querySelector("#time-value");
+        timeValue.innerHTML = info.system.time;
+
+        const uptimeValue = document.querySelector("#uptime-value");
+        uptimeValue.innerHTML = info.system.uptime;
       }
 
       async function startManualPump() {
