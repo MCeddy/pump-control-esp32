@@ -2,10 +2,11 @@
 #include <WiFi.h>
 #include <SPIFFS.h>
 #include <ESPAsyncWebServer.h>
+#include <AsyncJson.h>
+#include <ArduinoJson.h>
 #include <ArduinoOTA.h>
 #include <WiFiSettings.h>
 #include <ESPNtpClient.h>
-#include <ArduinoJson.h>
 #include <StreamUtils.h>
 
 #include "config.h"
@@ -24,6 +25,7 @@ String version = "0.1.0";
 
 // timer
 TimerHandle_t wifiReconnectTimer;
+TimerHandle_t waterpumpTimer;
 
 AsyncWebServer server(80);
 
@@ -154,9 +156,23 @@ bool connectToWifi()
     return WiFiSettings.connect(true, 30);
 }
 
+void stopWaterpump()
+{
+    digitalWrite(WATERPUMP_PIN, LOW);
+
+    Serial.println("watering stopped");
+}
+
+void onWaterpumpTimerTriggered()
+{
+    // finished watering -> stop watering
+    stopWaterpump();
+}
+
 void setupTimers()
 {
     wifiReconnectTimer = xTimerCreate("wifiTimer", pdMS_TO_TICKS(2000), pdFALSE, (void *)1, reinterpret_cast<TimerCallbackFunction_t>(connectToWifi));
+    waterpumpTimer = xTimerCreate("waterpumpTimer", pdMS_TO_TICKS(1000), pdFALSE, (void *)2, reinterpret_cast<TimerCallbackFunction_t>(onWaterpumpTimerTriggered));
 }
 
 void setupOTA()
@@ -250,17 +266,33 @@ void detect_wakeup_reason()
     }
 }
 
-// Replaces placeholders in template
-String templateProcessor(const String &var)
+void startWaterpump(unsigned long seconds)
 {
-    Serial.println(var);
-
-    if (var == "DEVICE_ID")
+    if (xTimerIsTimerActive(waterpumpTimer) == pdTRUE)
     {
-        return DEVICE_ID;
+        Serial.println("pump already active");
+        return;
     }
 
-    return String();
+    // start timer for stop waterpump after specific time
+    xTimerChangePeriod(waterpumpTimer, pdMS_TO_TICKS(seconds * 1000), 0);
+    xTimerStart(waterpumpTimer, 0);
+
+    // start watering
+    digitalWrite(WATERPUMP_PIN, HIGH);
+
+    Serial.println("watering started");
+}
+
+void abortWaterpump()
+{
+    if (xTimerIsTimerActive(waterpumpTimer) == pdFALSE)
+    {
+        return;
+    }
+
+    xTimerStop(waterpumpTimer, 0);
+    stopWaterpump();
 }
 
 void setupNTP()
@@ -287,7 +319,7 @@ void setupNTP()
 void setupWebserver()
 {
     server.on("/", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(SPIFFS, "/index.html", "text/html", false, templateProcessor);
+        request->send(SPIFFS, "/index.html", "text/html", false);
     });
 
     /*server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -302,6 +334,28 @@ void setupWebserver()
 
         request->send(stream, "application/json", size);
     });
+
+    /*server.on("/api/manual-start", HTTP_POST, [](AsyncWebServerRequest *request) {
+        request->getParam("body");
+    });*/
+
+    AsyncCallbackJsonWebHandler *handler = new AsyncCallbackJsonWebHandler("/api/manual-start", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        const char *durationKey = "duration";
+        StaticJsonDocument<200> data = json.as<JsonObject>();
+
+        if (!data.containsKey(durationKey))
+        {
+            request->send(400); // bad request
+        }
+
+        auto duration = data[durationKey].as<unsigned long>();
+        Serial.print("start pump ");
+        Serial.println(duration);
+        //startWaterpump(duration);
+
+        request->send(200);
+    });
+    server.addHandler(handler);
 
     server.begin();
 }

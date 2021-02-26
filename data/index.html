@@ -18,13 +18,116 @@
   <body>
     <div class="container">
       <h1>Pump Control ESP32</h1>
-      <p>Device ID: <strong>%DEVICE_ID%</strong></p>
-      <p>
-        <a href="/on"><button class="btn btn-primary">ON</button></a>
-      </p>
-      <p>
-        <a href="/off"><button class="btn btn-secondary">OFF</button></a>
-      </p>
+
+      <section id="device-info">
+        <h2>Device Info</h2>
+        <p>Device ID: <strong id="device-id-value">n.a.</strong></p>
+
+        <div class="input-group">
+          <span class="input-group-text">wifi signal</span>
+          <div id="wifi-signal" class="progress" style="flex: 1; height: unset">
+            <div
+              class="progress-bar"
+              role="progressbar"
+              style="width: 25%"
+              aria-valuenow="25"
+              aria-valuemin="0"
+              aria-valuemax="100"
+            >
+              25%
+            </div>
+          </div>
+        </div>
+      </section>
+
+      <h2>Manual start</h2>
+      <div class="input-group">
+        <input
+          type="number"
+          id="manual-duration"
+          class="form-control"
+          min="1"
+          max="600"
+          value="10"
+        />
+        <span class="input-group-text">seconds</span>
+      </div>
+      <button type="button" id="manual-start" class="btn btn-primary">
+        start
+      </button>
+
+      <h2>Automatic</h2>
+      <ul class="list-group">
+        <li class="list-group-item">An item</li>
+        <li class="list-group-item">A second item</li>
+        <li class="list-group-item">A third item</li>
+        <li class="list-group-item">A fourth item</li>
+        <li class="list-group-item">And a fifth one</li>
+      </ul>
+
+      <h2>Admin stuff</h2>
+
+      <button type="button" id="reset-data" class="btn btn-danger">
+        reset data
+      </button>
+
+      <button type="button" id="download-backup" class="btn btn-secondary">
+        download backup
+      </button>
+
+      <button type="button" id="restore-backup" class="btn btn-secondary">
+        restore backup
+      </button>
     </div>
+
+    <script>
+      async function getInfo() {
+        const response = await fetch("/api/info");
+        const info = await response.json();
+
+        console.log("info", info);
+
+        // refresh device data
+
+        const deviceIdValue = document.querySelector("#device-id-value");
+        deviceIdValue.innerHTML = info.system.deviceId;
+
+        const wifiSignalProgressbar = document.querySelector(
+          "#wifi-signal .progress-bar"
+        );
+        wifiSignalProgressbar.innerHTML = `${info.network.wifiQuality}%`;
+        wifiSignalProgressbar.style.width = `${info.network.wifiQuality}%`;
+        wifiSignalProgressbar.setAttribute(
+          "aria-valuenow",
+          info.network.wifiQuality
+        );
+      }
+
+      async function startManualPump() {
+        const inputDuration = document.querySelector("input#manual-duration");
+        const data = {
+          duration: inputDuration.value,
+        };
+        const requestOptions = {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(data),
+        };
+
+        const response = await fetch("/api/manual-start", requestOptions);
+      }
+
+      async function bindButtons() {
+        const manualStartButton = document.querySelector("button#manual-start");
+        manualStartButton.addEventListener("click", (event) =>
+          startManualPump()
+        );
+      }
+
+      getInfo();
+      bindButtons();
+    </script>
   </body>
 </html>
