@@ -310,8 +310,6 @@ void setupNTP()
         default:
             break;
         }
-
-        //Serial.printf("[NTP-event] %s\n", NTP.ntpEvent2str(ntpEvent));
     });
     NTP.begin();
 }
@@ -346,12 +344,21 @@ void setupWebserver()
         if (!data.containsKey(durationKey))
         {
             request->send(400); // bad request
+            return;
         }
 
         auto duration = data[durationKey].as<unsigned long>();
+
+        if (duration < 10 || duration > 600)
+        {
+            request->send(400); // bad request
+            return;
+        }
+
         Serial.print("start pump ");
         Serial.println(duration);
-        //startWaterpump(duration);
+
+        startWaterpump(duration);
 
         request->send(200);
     });
