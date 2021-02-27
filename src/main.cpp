@@ -91,9 +91,9 @@ int GetRssiAsQuality(int rssi)
     return quality;
 }
 
-DynamicJsonDocument getInfoJson()
+StaticJsonDocument<1024> getInfoJson()
 {
-    DynamicJsonDocument doc(1024);
+    StaticJsonDocument<1024> doc;
     doc["version"] = version;
 
     JsonObject system = doc.createNestedObject("system");
@@ -109,6 +109,22 @@ DynamicJsonDocument getInfoJson()
     network["wifiQuality"] = GetRssiAsQuality(rssi);
     network["wifiSsid"] = WiFi.SSID();
     network["ip"] = WiFi.localIP().toString();
+
+    return doc;
+}
+
+StaticJsonDocument<1024> getAutoStartsJson()
+{
+    StaticJsonDocument<1024> doc;
+    JsonArray list = doc.to<JsonArray>();
+
+    JsonObject item1 = list.createNestedObject();
+    item1["time"] = "08:12";
+    item1["duration"] = "60";
+
+    JsonObject item2 = list.createNestedObject();
+    item2["time"] = "13:50";
+    item2["duration"] = "120";
 
     return doc;
 }
@@ -320,10 +336,6 @@ void setupWebserver()
         request->send(SPIFFS, "/index.html", "text/html", false);
     });
 
-    /*server.on("/settings", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(SPIFFS, "/wifi-password", "text/plain", false);
-    });*/
-
     server.on("/api/info", HTTP_GET, [](AsyncWebServerRequest *request) {
         auto infoJson = getInfoJson();
 
@@ -333,9 +345,14 @@ void setupWebserver()
         request->send(stream, "application/json", size);
     });
 
-    /*server.on("/api/manual-start", HTTP_POST, [](AsyncWebServerRequest *request) {
-        request->getParam("body");
-    });*/
+    server.on("/api/auto-starts", HTTP_GET, [](AsyncWebServerRequest *request) {
+        auto startsJson = getAutoStartsJson();
+
+        StringStream stream;
+        auto size = serializeJson(startsJson, stream);
+
+        request->send(stream, "application/json", size);
+    });
 
     AsyncCallbackJsonWebHandler *handler = new AsyncCallbackJsonWebHandler("/api/manual-start", [](AsyncWebServerRequest *request, JsonVariant &json) {
         const char *durationKey = "duration";
