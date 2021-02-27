@@ -304,8 +304,11 @@ void abortWaterpump()
 {
     if (xTimerIsTimerActive(waterpumpTimer) == pdFALSE)
     {
+        Serial.println("waterpump not running");
         return;
     }
+
+    Serial.println("abort waterpump");
 
     xTimerStop(waterpumpTimer, 0);
     stopWaterpump();
@@ -352,6 +355,12 @@ void setupWebserver()
         auto size = serializeJson(startsJson, stream);
 
         request->send(stream, "application/json", size);
+    });
+
+    server.on("/api/manual-stop", HTTP_POST, [](AsyncWebServerRequest *request) {
+        abortWaterpump();
+
+        request->send(200);
     });
 
     AsyncCallbackJsonWebHandler *handler = new AsyncCallbackJsonWebHandler("/api/manual-start", [](AsyncWebServerRequest *request, JsonVariant &json) {

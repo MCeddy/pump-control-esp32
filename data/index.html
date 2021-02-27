@@ -45,8 +45,13 @@
           />
           <span class="input-group-text">seconds</span>
         </div>
+
         <button type="button" id="manual-start" class="btn btn-primary">
           start
+        </button>
+
+        <button type="button" id="manual-stop" class="btn btn-secondary">
+          stop
         </button>
       </section>
 
@@ -71,6 +76,7 @@
                     max="600"
                     class="form-control"
                   />
+                  <span class="input-group-text">seconds</span>
                 </div>
               </div>
             </div>
@@ -154,6 +160,18 @@
         const autoStarts = await response.json();
 
         console.log("auto-starts", autoStarts);
+
+        // transfer values to the form
+
+        for (const [i, start] of autoStarts.entries()) {
+          const timeGroup = document.querySelector(`#time-${i}`);
+          const timeValue = timeGroup.querySelector("input");
+          timeValue.value = start.time;
+
+          const durationGroup = document.querySelector(`#duration-${i}`);
+          const durationValue = durationGroup.querySelector("input");
+          durationValue.value = start.duration;
+        }
       }
 
       async function startManualPump() {
@@ -172,11 +190,27 @@
         const response = await fetch("/api/manual-start", requestOptions);
       }
 
+      async function stopManualPump() {
+        const data = {};
+        const requestOptions = {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(data),
+        };
+
+        const response = await fetch("/api/manual-stop", requestOptions);
+      }
+
       async function bindButtons() {
         const manualStartButton = document.querySelector("button#manual-start");
         manualStartButton.addEventListener("click", (event) =>
           startManualPump()
         );
+
+        const manualStopButton = document.querySelector("button#manual-stop");
+        manualStopButton.addEventListener("click", (event) => stopManualPump());
       }
 
       loadInfo();
