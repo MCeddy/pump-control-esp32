@@ -17,74 +17,86 @@
   </head>
   <body>
     <div class="container">
-      <h1>Pump Control ESP32</h1>
+      <h1 class="mb-3">Pump Control ESP32</h1>
 
-      <section id="device-info">
+      <section id="device-info" class="mb-3">
         <h2>Device Info</h2>
-        <p>device ID: <strong id="device-id-value">n.a.</strong></p>
 
-        <div class="input-group">
-          <span class="input-group-text">wifi signal</span>
-          <div id="wifi-signal" class="progress" style="flex: 1; height: unset">
-            <div
-              class="progress-bar"
-              role="progressbar"
-              style="width: 0%"
-              aria-valuenow="0"
-              aria-valuemin="0"
-              aria-valuemax="100"
-            >
-              0%
-            </div>
-          </div>
+        <div>device ID: <span id="device-id-value">n.a.</span></div>
+        <div>
+          firmware version: <span id="firmware-version-value">n.a.</span>
         </div>
-
-        <p>time: <span id="time-value">n.a.</span></p>
-        <p>uptime: <span id="uptime-value">n.a.</span></p>
+        <div>wifi signal: <span id="wifi-signal-value">n.a.</span></div>
+        <div>time: <span id="time-value">n.a.</span></div>
+        <div>uptime: <span id="uptime-value">n.a.</span></div>
       </section>
 
-      <h2>Manual start</h2>
-      <div class="input-group">
-        <input
-          type="number"
-          id="manual-duration"
-          class="form-control"
-          min="1"
-          max="600"
-          value="10"
-        />
-        <span class="input-group-text">seconds</span>
-      </div>
-      <button type="button" id="manual-start" class="btn btn-primary">
-        start
-      </button>
+      <section class="mb-3">
+        <h2>Manual start</h2>
 
-      <h2>Automatic</h2>
-      <ul class="list-group">
-        <li class="list-group-item">An item</li>
-        <li class="list-group-item">A second item</li>
-        <li class="list-group-item">A third item</li>
-        <li class="list-group-item">A fourth item</li>
-        <li class="list-group-item">And a fifth one</li>
-      </ul>
+        <div class="input-group mb-3">
+          <input
+            type="number"
+            id="manual-duration"
+            class="form-control"
+            min="1"
+            max="600"
+            value="10"
+          />
+          <span class="input-group-text">seconds</span>
+        </div>
+        <button type="button" id="manual-start" class="btn btn-primary">
+          start
+        </button>
+      </section>
 
-      <h2>Admin stuff</h2>
+      <section class="mb-3">
+        <h2>Automatic</h2>
 
-      <button type="button" id="reset-data" class="btn btn-danger">
-        reset data
-      </button>
+        <ul class="list-group">
+          <li id="auto-list-0" class="list-group-item">
+            <div class="row">
+              <div class="col">
+                <div class="input-group" id="time-0">
+                  <span class="input-group-text">time 1</span>
+                  <input type="time" class="form-control" />
+                </div>
+              </div>
+              <div class="col">
+                <div class="input-group" id="duration-0">
+                  <span class="input-group-text">duration 1</span>
+                  <input
+                    type="number"
+                    min="10"
+                    max="600"
+                    class="form-control"
+                  />
+                </div>
+              </div>
+            </div>
+          </li>
+        </ul>
+      </section>
 
-      <button type="button" id="download-backup" class="btn btn-secondary">
-        download backup
-      </button>
+      <section>
+        <h2>Admin stuff</h2>
 
-      <button type="button" id="restore-backup" class="btn btn-secondary">
-        restore backup
-      </button>
+        <button type="button" id="download-backup" class="btn btn-secondary">
+          download backup
+        </button>
+
+        <button type="button" id="restore-backup" class="btn btn-secondary">
+          restore backup
+        </button>
+
+        <button type="button" id="reset-data" class="btn btn-danger">
+          reset data
+        </button>
+      </section>
     </div>
 
     <script>
-      async function getInfo() {
+      async function loadInfo() {
         const response = await fetch("/api/info");
         const info = await response.json();
 
@@ -95,21 +107,53 @@
         const deviceIdValue = document.querySelector("#device-id-value");
         deviceIdValue.innerHTML = info.system.deviceId;
 
-        const wifiSignalProgressbar = document.querySelector(
-          "#wifi-signal .progress-bar"
+        const firmwareVersionValue = document.querySelector(
+          "#firmware-version-value"
         );
-        wifiSignalProgressbar.innerHTML = `${info.network.wifiQuality}%`;
-        wifiSignalProgressbar.style.width = `${info.network.wifiQuality}%`;
-        wifiSignalProgressbar.setAttribute(
-          "aria-valuenow",
-          info.network.wifiQuality
-        );
+        firmwareVersionValue.innerHTML = info.version;
+
+        const wifiSignalValue = document.querySelector("#wifi-signal-value");
+        wifiSignalValue.innerHTML = `${info.network.wifiQuality}%`;
 
         const timeValue = document.querySelector("#time-value");
         timeValue.innerHTML = info.system.time;
 
         const uptimeValue = document.querySelector("#uptime-value");
         uptimeValue.innerHTML = info.system.uptime;
+      }
+
+      async function prepareAutoList() {
+        const firstItem = document.querySelector("#auto-list-0");
+
+        const changeLabel = (inputGroup, newLabel) => {
+          const label = inputGroup.querySelector(".input-group-text");
+          label.innerHTML = newLabel;
+        };
+
+        for (let i = 1; i < 6; i++) {
+          const newItem = firstItem.cloneNode(true);
+
+          newItem.id = `auto-list-${i}`;
+
+          const timeGroup = newItem.querySelector("#time-0");
+          timeGroup.id = `time-${i}`;
+
+          changeLabel(timeGroup, `time ${i + 1}`);
+
+          const durationGroup = newItem.querySelector("#duration-0");
+          durationGroup.id = `duration-${i}`;
+
+          changeLabel(durationGroup, `duration ${i + 1}`);
+
+          firstItem.parentNode.appendChild(newItem);
+        }
+      }
+
+      async function loadAutoStarts() {
+        const response = await fetch("/api/auto-starts");
+        const autoStarts = await response.json();
+
+        console.log("auto-starts", autoStarts);
       }
 
       async function startManualPump() {
@@ -135,7 +179,9 @@
         );
       }
 
-      getInfo();
+      loadInfo();
+      prepareAutoList();
+      loadAutoStarts();
       bindButtons();
     </script>
   </body>
