@@ -120,16 +120,17 @@ StaticJsonDocument<1024> getInfoJson()
 
 StaticJsonDocument<1024> getAutoStartsJson()
 {
+    File file = SPIFFS.open(autoStartsFilename, FILE_READ);
+
     StaticJsonDocument<1024> doc;
-    JsonArray autoStarts = doc.to<JsonArray>();
+    auto error = deserializeJson(doc, file);
 
-    JsonObject start1 = autoStarts.createNestedObject();
-    start1["time"] = "08:12";
-    start1["duration"] = 60;
+    file.close();
 
-    JsonObject start2 = autoStarts.createNestedObject();
-    start2["time"] = "13:50";
-    start2["duration"] = 120;
+    if (error)
+    {
+        Serial.println("error on deserializing 'auto-starts' file");
+    }
 
     return doc;
 }
@@ -344,8 +345,9 @@ void setupWebserver()
         request->send(SPIFFS, "/index.html", "text/html", false);
     });
 
+    // only for debug reasons (raw file output)
     server.on("/auto-starts", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(SPIFFS, autoStartsFilename, "text/plain", false);
+        request->send(SPIFFS, autoStartsFilename, "application/json", false);
     });
 
     server.on("/api/info", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -358,10 +360,10 @@ void setupWebserver()
     });
 
     server.on("/api/auto-starts", HTTP_GET, [](AsyncWebServerRequest *request) {
-        auto startsJson = getAutoStartsJson();
+        auto autoStarts = getAutoStartsJson();
 
         StringStream stream;
-        auto size = serializeJson(startsJson, stream);
+        auto size = serializeJson(autoStarts, stream);
 
         request->send(stream, "application/json", size);
     });
@@ -403,13 +405,10 @@ void setupWebserver()
         const char *timeKey = "time";
         const char *durationKey = "duration";
 
-        auto autoStarts = json.as<JsonArray>();
+        JsonArray autoStarts = json.as<JsonArray>();
 
-        // transform JSON into string format (line based):
-        // "time;duration/n"
-
-        File file = SPIFFS.open(autoStartsFilename, FILE_WRITE);
-
+        // check JSON is in correct format
+        // TODO use better schema check
         for (JsonVariant start : autoStarts)
         {
             if (!start.containsKey(timeKey) || !start.containsKey(durationKey))
@@ -417,11 +416,14 @@ void setupWebserver()
                 request->send(400); // bad request
                 return;
             }
+        }
 
-            // save into file
-            file.print(start[timeKey].as<String>());
-            file.print(";");
-            file.println(start[durationKey].as<unsigned short>());
+        // save into file
+        File file = SPIFFS.open(autoStartsFilename, FILE_WRITE);
+
+        if (serializeJson(autoStarts, file) == 0)
+        {
+            Serial.println("error on writing 'auto-starts' file");
         }
 
         file.close();
