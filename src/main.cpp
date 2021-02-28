@@ -21,6 +21,8 @@ extern "C"
 #define DEVICE_ID (Sprintf("%06" PRIx64, ESP.getEfuseMac() >> 24)) // unique device ID
 #define uS_TO_S_FACTOR 1000000                                     // Conversion factor for micro seconds to seconds
 
+const char *autoStartsFilename = "auto-starts";
+
 String version = "0.1.0";
 
 // timer
@@ -102,7 +104,10 @@ StaticJsonDocument<1024> getInfoJson()
     system["time"] = NTP.getTimeDateStringForJS();
     system["uptime"] = NTP.getUptimeString();
 
-    // network
+    JsonObject fileSystem = doc.createNestedObject("fileSystem");
+    fileSystem["totalBytes"] = SPIFFS.totalBytes();
+    fileSystem["usedBytes"] = SPIFFS.usedBytes();
+
     JsonObject network = doc.createNestedObject("network");
     int8_t rssi = WiFi.RSSI();
     network["wifiRssi"] = rssi;
@@ -116,15 +121,15 @@ StaticJsonDocument<1024> getInfoJson()
 StaticJsonDocument<1024> getAutoStartsJson()
 {
     StaticJsonDocument<1024> doc;
-    JsonArray list = doc.to<JsonArray>();
+    JsonArray autoStarts = doc.to<JsonArray>();
 
-    JsonObject item1 = list.createNestedObject();
-    item1["time"] = "08:12";
-    item1["duration"] = "60";
+    JsonObject start1 = autoStarts.createNestedObject();
+    start1["time"] = "08:12";
+    start1["duration"] = 60;
 
-    JsonObject item2 = list.createNestedObject();
-    item2["time"] = "13:50";
-    item2["duration"] = "120";
+    JsonObject start2 = autoStarts.createNestedObject();
+    start2["time"] = "13:50";
+    start2["duration"] = 120;
 
     return doc;
 }
@@ -339,6 +344,10 @@ void setupWebserver()
         request->send(SPIFFS, "/index.html", "text/html", false);
     });
 
+    server.on("/auto-starts", HTTP_GET, [](AsyncWebServerRequest *request) {
+        request->send(SPIFFS, autoStartsFilename, "text/html", false);
+    });
+
     server.on("/api/info", HTTP_GET, [](AsyncWebServerRequest *request) {
         auto infoJson = getInfoJson();
 
@@ -363,7 +372,7 @@ void setupWebserver()
         request->send(200);
     });
 
-    AsyncCallbackJsonWebHandler *handler = new AsyncCallbackJsonWebHandler("/api/manual-start", [](AsyncWebServerRequest *request, JsonVariant &json) {
+    AsyncCallbackJsonWebHandler *postManualStartHandler = new AsyncCallbackJsonWebHandler("/api/manual-start", [](AsyncWebServerRequest *request, JsonVariant &json) {
         const char *durationKey = "duration";
         StaticJsonDocument<200> data = json.as<JsonObject>();
 
@@ -388,7 +397,41 @@ void setupWebserver()
 
         request->send(200);
     });
-    server.addHandler(handler);
+    server.addHandler(postManualStartHandler);
+
+    AsyncCallbackJsonWebHandler *postsAutoStartsHandler = new AsyncCallbackJsonWebHandler("/api/auto-starts", [](AsyncWebServerRequest *request, JsonVariant &json) {
+        const char *timeKey = "time";
+        const char *durationKey = "duration";
+
+        StringPrint fileData;
+
+        auto autoStarts = json.as<JsonArray>();
+
+        // transform JSON into string format (line based):
+        // "time;duration/n"
+        for (JsonVariant start : autoStarts)
+        {
+            if (!start.containsKey(timeKey) || !start.containsKey(durationKey))
+            {
+                request->send(400); // bad request
+                return;
+            }
+
+            fileData.print(start[timeKey].as<String>());
+            fileData.print(";");
+            fileData.println(start[durationKey].as<unsigned short>());
+        }
+
+        // save into file
+        File file = SPIFFS.open(autoStartsFilename, FILE_WRITE);
+        fileData.print(file);
+        file.close();
+
+        Serial.println("auto-starts saved");
+
+        request->send(200);
+    });
+    server.addHandler(postsAutoStartsHandler);
 
     server.begin();
 }
