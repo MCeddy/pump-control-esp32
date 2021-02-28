@@ -83,8 +83,8 @@
           </li>
         </ul>
 
-        <button id="save" class="btn btn-primary">save</button>
-        <button id="reset" class="btn btn-secondary">reset</button>
+        <button id="save-button" class="btn btn-primary">save</button>
+        <button id="reset-button" class="btn btn-secondary">reset</button>
       </section>
 
       <section>
@@ -139,7 +139,7 @@
           label.innerHTML = newLabel;
         };
 
-        for (let i = 1; i < 6; i++) {
+        for (let i = 1; i < 10; i++) {
           const newItem = firstItem.cloneNode(true);
 
           newItem.id = `auto-list-${i}`;
@@ -166,7 +166,7 @@
 
         // transfer values to the form
 
-        for (let i = 0; i < 6; i++) {
+        for (let i = 0; i < 10; i++) {
           let time = "";
           let duration = "";
 
@@ -185,6 +185,45 @@
           const durationValue = durationGroup.querySelector("input");
           durationValue.value = duration;
         }
+      }
+
+      async function saveAutoStarts() {
+        const autoStarts = [];
+
+        for (let i = 0; i < 10; i++) {
+          const timeGroup = document.querySelector(`#time-${i}`);
+          const timeValue = timeGroup.querySelector("input");
+
+          const durationGroup = document.querySelector(`#duration-${i}`);
+          const durationValue = durationGroup.querySelector("input");
+
+          if (timeValue.value === "" || durationValue.value === "") {
+            continue;
+          }
+
+          const duration = parseInt(durationValue.value, 10);
+
+          if (duration < 10 || duration > 600) {
+            continue;
+          }
+
+          const autoStart = {
+            time: timeValue.value,
+            duration,
+          };
+
+          autoStarts.push(autoStart);
+        }
+
+        const requestOptions = {
+          method: "POST",
+          headers: {
+            "Content-Type": "application/json",
+          },
+          body: JSON.stringify(autoStarts),
+        };
+
+        const response = await fetch("/api/auto-starts", requestOptions);
       }
 
       async function startManualPump() {
@@ -225,8 +264,13 @@
         const manualStopButton = document.querySelector("button#manual-stop");
         manualStopButton.addEventListener("click", (event) => stopManualPump());
 
+        const saveButton = document.querySelector(
+          "section#auto-starts button#save-button"
+        );
+        saveButton.addEventListener("click", (event) => saveAutoStarts());
+
         const resetButton = document.querySelector(
-          "section#auto-starts button#reset"
+          "section#auto-starts button#reset-button"
         );
         resetButton.addEventListener("click", (event) => loadAutoStarts());
       }
@@ -235,6 +279,10 @@
       prepareAutoList();
       loadAutoStarts();
       bindButtons();
+
+      setInterval(() => {
+        loadInfo();
+      }, 30000);
     </script>
   </body>
 </html>
