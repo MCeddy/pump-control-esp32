@@ -21,7 +21,7 @@ extern "C"
 #define DEVICE_ID (Sprintf("%06" PRIx64, ESP.getEfuseMac() >> 24)) // unique device ID
 #define uS_TO_S_FACTOR 1000000                                     // Conversion factor for micro seconds to seconds
 
-const char *autoStartsFilename = "auto-starts";
+const char *autoStartsFilename = "/auto-starts";
 
 String version = "0.1.0";
 
@@ -345,7 +345,7 @@ void setupWebserver()
     });
 
     server.on("/auto-starts", HTTP_GET, [](AsyncWebServerRequest *request) {
-        request->send(SPIFFS, autoStartsFilename, "text/html", false);
+        request->send(SPIFFS, autoStartsFilename, "text/plain", false);
     });
 
     server.on("/api/info", HTTP_GET, [](AsyncWebServerRequest *request) {
@@ -403,12 +403,13 @@ void setupWebserver()
         const char *timeKey = "time";
         const char *durationKey = "duration";
 
-        StringPrint fileData;
-
         auto autoStarts = json.as<JsonArray>();
 
         // transform JSON into string format (line based):
         // "time;duration/n"
+
+        File file = SPIFFS.open(autoStartsFilename, FILE_WRITE);
+
         for (JsonVariant start : autoStarts)
         {
             if (!start.containsKey(timeKey) || !start.containsKey(durationKey))
@@ -417,14 +418,12 @@ void setupWebserver()
                 return;
             }
 
-            fileData.print(start[timeKey].as<String>());
-            fileData.print(";");
-            fileData.println(start[durationKey].as<unsigned short>());
+            // save into file
+            file.print(start[timeKey].as<String>());
+            file.print(";");
+            file.println(start[durationKey].as<unsigned short>());
         }
 
-        // save into file
-        File file = SPIFFS.open(autoStartsFilename, FILE_WRITE);
-        fileData.print(file);
         file.close();
 
         Serial.println("auto-starts saved");
