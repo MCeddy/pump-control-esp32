@@ -87,14 +87,24 @@
         <button id="reset-button" class="btn btn-secondary">reset</button>
       </section>
 
-      <section>
+      <section section="admin-stuff">
         <h2>Admin stuff</h2>
 
-        <button type="button" id="download-backup" class="btn btn-secondary">
+        <button
+          type="button"
+          id="download-backup"
+          class="btn btn-secondary"
+          disabled
+        >
           download backup
         </button>
 
-        <button type="button" id="restore-backup" class="btn btn-secondary">
+        <button
+          type="button"
+          id="restore-backup"
+          class="btn btn-secondary"
+          disabled
+        >
           restore backup
         </button>
 
@@ -161,8 +171,6 @@
       async function loadAutoStarts() {
         const response = await fetch("/api/auto-starts");
         const autoStarts = await response.json();
-
-        console.log("auto-starts", autoStarts);
 
         // transfer values to the form
 
