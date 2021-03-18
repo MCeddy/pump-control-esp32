@@ -8,6 +8,7 @@
 #include <WiFiSettings.h>
 #include <ESPNtpClient.h>
 #include <StreamUtils.h>
+#include <ESPmDNS.h>
 
 #include "config.h"
 
@@ -454,7 +455,7 @@ void setup()
     WiFi.onEvent(onWiFiEvent);
 
     WiFiSettings.secure = true;
-    WiFiSettings.hostname = "pump-control-"; // will auto add device ID
+    WiFiSettings.hostname = HOSTNAME_PREFIX; // will auto add device ID
     WiFiSettings.password = PASSWORD;
 
     // Set callbacks to start OTA when the portal is active
@@ -482,6 +483,15 @@ void setup()
         connectToWifi();
     }
 
+    auto hostname = WiFiSettings.hostname.c_str();
+    Serial.print("hostname: ");
+    Serial.println(hostname);
+
+    if (!MDNS.begin(hostname))
+    {
+        Serial.println("Error starting mDNS");
+    }
+
     Serial.println("init OTA, NTP and webserver");
 
     setupOTA();
@@ -504,8 +514,7 @@ void loop()
                 Serial.print("time: ");
                 Serial.println(NTP.getTimeDateString());
 
-                //sendInfo(); // TODO move to async timer
-
+                
                 lastInfoSend = millis();
             }
         }
