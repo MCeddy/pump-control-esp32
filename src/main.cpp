@@ -339,7 +339,7 @@ void setupNTP()
             char *iso8601dateTime = NTP.getTimeDateString(time(NULL), "%04Y-%02m-%02dT%02H:%02M:%02S");
             Serial.println(iso8601dateTime);
 
-            //rtc.adjust(DateTime(iso8601dateTime));
+            rtc.adjust(DateTime(iso8601dateTime));
 
             break;
         }
