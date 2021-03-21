@@ -9,6 +9,8 @@
 #include <ESPNtpClient.h>
 #include <StreamUtils.h>
 #include <ESPmDNS.h>
+#include <RTClib.h>
+//#include<time.h>
 
 #include "config.h"
 
@@ -31,13 +33,14 @@ TimerHandle_t wifiReconnectTimer;
 TimerHandle_t waterpumpTimer;
 
 AsyncWebServer server(80);
+RTC_DS3231 rtc;
 
 // states
 bool isUpdating = false;
 bool isWifiConnected = false;
 bool isPortalActive = false;
 bool isWifiSuccess = false;
-bool wasTimeSynced = false;
+bool timeWasSynced = false;
 
 // (old) timers
 unsigned long lastInfoSend = 0;
@@ -324,12 +327,22 @@ void abortWaterpump()
 void setupNTP()
 {
     NTP.setTimeZone(TIMEZONE);
+    NTP.setInterval(21600); // each 6h
     NTP.onNTPSyncEvent([](NTPEvent_t ntpEvent) {
         switch (ntpEvent.event)
         {
         case timeSyncd:
-            wasTimeSynced = true;
+        {
+            timeWasSynced = true;
+
+            Serial.println("NTP synced");
+            char *iso8601dateTime = NTP.getTimeDateString(time(NULL), "%04Y-%02m-%02dT%02H:%02M:%02S");
+            Serial.println(iso8601dateTime);
+
+            //rtc.adjust(DateTime(iso8601dateTime));
+
             break;
+        }
         case partlySync:
         case syncNotNeeded:
         case accuracyError:
@@ -507,14 +520,13 @@ void loop()
 
     if (!isPortalActive && !isUpdating)
     {
-        if (isWifiConnected && isWifiSuccess && wasTimeSynced)
+        if (isWifiConnected && isWifiSuccess && timeWasSynced)
         {
             if (lastInfoSend == 0 || millis() - lastInfoSend >= 45000) // every 45 seconds
             {
                 Serial.print("time: ");
                 Serial.println(NTP.getTimeDateString());
 
-                
                 lastInfoSend = millis();
             }
         }
