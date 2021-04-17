@@ -44,6 +44,7 @@ bool timeWasSynced = false;
 
 // (old) timers
 unsigned long lastInfoSend = 0;
+unsigned long lastAlarmCheck = 0;
 
 void onWiFiEvent(WiFiEvent_t event)
 {
@@ -324,6 +325,23 @@ void abortWaterpump()
     stopWaterpump();
 }
 
+void setupRTC()
+{
+    if (!rtc.begin())
+    {
+        Serial.println("Couldn't find RTC!");
+        Serial.flush();
+        abort();
+    }
+
+    //we don't need the 32K Pin, so disable it
+    rtc.disable32K();
+
+    // stop oscillating signals at SQW Pin
+    // otherwise setAlarm1 will fail
+    rtc.writeSqwPinMode(DS3231_OFF);
+}
+
 void setupNTP()
 {
     NTP.setTimeZone(TIMEZONE);
@@ -444,6 +462,8 @@ void setupWebserver()
         Serial.println("auto-starts saved");
 
         request->send(200);
+
+        ESP.restart();
     });
     server.addHandler(postsAutoStartsHandler);
 
@@ -507,10 +527,27 @@ void setup()
     Serial.println("init OTA, NTP and webserver");
 
     setupOTA();
+    setupRTC();
     setupNTP();
     setupWebserver();
 
     detect_wakeup_reason();
+}
+
+bool isAlarmFired(String timeValue)
+{
+    unsigned int alarmHour = timeValue.substring(0, 2).toInt();
+    unsigned int alarmMinute = timeValue.substring(3, 5).toInt();
+
+    Serial.print(timeValue);
+    Serial.print(" - ");
+    Serial.print(alarmHour);
+    Serial.print("_");
+    Serial.println(alarmMinute);
+
+    DateTime now = rtc.now();
+
+    return now.hour() == alarmHour && now.minute() == alarmMinute;
 }
 
 void loop()
@@ -521,13 +558,45 @@ void loop()
     {
         if (isWifiConnected && isWifiSuccess && timeWasSynced)
         {
-            if (lastInfoSend == 0 || millis() - lastInfoSend >= 45000) // every 45 seconds
+            if (lastInfoSend == 0 || millis() - lastInfoSend >= UPDATE_INTERVAL)
             {
-                Serial.print("time: ");
-                Serial.println(NTP.getTimeDateString());
+                /*Serial.print("time: ");
+                Serial.println(NTP.getTimeDateString());*/
+
+                time_t tnow = time(nullptr);
+                Serial.println(ctime(&tnow));
 
                 lastInfoSend = millis();
             }
         }
+
+        if (lastAlarmCheck == 0 || millis() - lastAlarmCheck >= ALARM_CHECK_INTERVAL)
+        {
+            StaticJsonDocument<1024> doc = getAutoStartsJson();
+            JsonArray autoStarts = doc.as<JsonArray>();
+
+            Serial.print("autostart count ");
+            Serial.println(autoStarts.size());
+
+            for (JsonVariant autoStart : autoStarts)
+            {
+                if (isAlarmFired(autoStart["time"]))
+                {
+                    unsigned int duration = autoStart["duration"].as<int>();
+
+                    Serial.print("Alarm was fired - watering for ");
+                    Serial.print(duration);
+                    Serial.println(" seconds");
+                }
+            }
+
+            lastAlarmCheck = millis();
+        }
+
+        /*if (rtc.alarmFired(1))
+        {
+            Serial.println("Alarm fired");
+            rtc.clearAlarm(1);
+        }*/
     }
 }
