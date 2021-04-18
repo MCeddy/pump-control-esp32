@@ -156,9 +156,12 @@ void hardReset()
 
 DateTime createDateTimeFromAlarmTime(DateTime day, String alarmTime)
 {
+    char dayString[12] = "YYYY-MM-DD";
+    day.toString(dayString);
+
     // create date string in format: "2020-06-25T15:29:37"
     StringPrint dateStream;
-    dateStream.print(day.toString("YYYY-MM-DD"));
+    dateStream.print(dayString);
     dateStream.print("T");
     dateStream.print(alarmTime); // e.g. "08:45"
     dateStream.print(":00");     // add seconds
@@ -213,8 +216,10 @@ void setNextAlarm(DateTime now, JsonArray autoStarts)
         Serial.println("couldn't set alarm because no autostarts configured yet.");
     }
 
-    Serial.print("setNextAlarm() for ");
-    Serial.println(now.toString("YYYY-MM-DD"));
+    Serial.print("setNextAlarm for ");
+    char dateString[12] = "YYYY-MM-DD";
+    now.toString(dateString);
+    Serial.println(dateString);
 
     NextAlarmResult nextAlarm = getNextAlarm(now, autoStarts);
 
@@ -232,8 +237,11 @@ void setNextAlarm(DateTime now, JsonArray autoStarts)
     }
     else
     {
+        char nextAlarmDateString[18] = "YYYY-MM-DD hh:mm";
+        nextAlarm.dateTime.toString(nextAlarmDateString);
+
         Serial.print("next alarm found ");
-        Serial.println(nextAlarm.dateTime.toString("YYYY-MM-DD hh:mm"));
+        Serial.println(nextAlarmDateString);
 
         JsonVariant nextAutoStart = autoStarts.getElement(nextAlarm.index);
         nextAlarmWateringDuration = nextAutoStart["duration"].as<unsigned int>();
@@ -251,6 +259,8 @@ void setNextAlarm(DateTime now, JsonArray autoStarts)
 
 void setNextAlarm()
 {
+    Serial.println("setNextAlarm()");
+
     StaticJsonDocument<1024> doc = getAutoStartsJson();
     JsonArray autoStarts = doc.as<JsonArray>();
 
@@ -661,8 +671,24 @@ void loop()
                 /*Serial.print("time: ");
                 Serial.println(NTP.getTimeDateString());*/
 
+                /*
                 time_t tnow = time(nullptr);
                 Serial.println(ctime(&tnow));
+                */
+
+                DateTime now = rtc.now();
+
+                Serial.print(now.year(), DEC);
+                Serial.print('/');
+                Serial.print(now.month(), DEC);
+                Serial.print('/');
+                Serial.print(now.day(), DEC);
+                Serial.print(now.hour(), DEC);
+                Serial.print(':');
+                Serial.print(now.minute(), DEC);
+                Serial.print(':');
+                Serial.print(now.second(), DEC);
+                Serial.println();
 
                 lastInfoSend = millis();
             }
