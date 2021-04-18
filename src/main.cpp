@@ -683,6 +683,7 @@ void loop()
                 Serial.print(now.month(), DEC);
                 Serial.print('/');
                 Serial.print(now.day(), DEC);
+                Serial.print(' ');
                 Serial.print(now.hour(), DEC);
                 Serial.print(':');
                 Serial.print(now.minute(), DEC);
