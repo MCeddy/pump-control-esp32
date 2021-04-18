@@ -40,6 +40,7 @@ bool isWifiConnected = false;
 bool isPortalActive = false;
 bool isWifiSuccess = false;
 bool timeWasSynced = false;
+bool wasInitAlarmsSet = false;
 
 unsigned int nextAlarmWateringDuration;
 
@@ -151,6 +152,111 @@ void hardReset()
     ESP.restart();
 
     //WiFiSettings.portal();
+}
+
+DateTime createDateTimeFromAlarmTime(DateTime day, String alarmTime)
+{
+    // create date string in format: "2020-06-25T15:29:37"
+    StringPrint dateStream;
+    dateStream.print(day.toString("YYYY-MM-DD"));
+    dateStream.print("T");
+    dateStream.print(alarmTime); // e.g. "08:45"
+    dateStream.print(":00");     // add seconds
+
+    String dateString = dateStream.str();
+    DateTime date = DateTime(const_cast<char *>(dateString.c_str()));
+
+    return date;
+}
+
+struct NextAlarmResult
+{
+    byte index;
+    DateTime dateTime;
+};
+
+NextAlarmResult getNextAlarm(DateTime now, JsonArray autoStarts)
+{
+    int32_t minTotalSecondsDiff = INT32_MAX;
+    byte nextAlarmIndex = 255;
+    DateTime nextAlarm;
+
+    byte alarmIndex = 0;
+
+    for (JsonVariant autoStart : autoStarts)
+    {
+        DateTime alarm = createDateTimeFromAlarmTime(now, autoStart["time"]);
+
+        if (alarm > now)
+        {
+            TimeSpan diff = alarm - now;
+            int32_t totalSecondsDiff = diff.totalseconds();
+
+            if (totalSecondsDiff < minTotalSecondsDiff)
+            {
+                minTotalSecondsDiff = totalSecondsDiff;
+                nextAlarmIndex = alarmIndex;
+                nextAlarm = alarm;
+            }
+        }
+
+        alarmIndex++;
+    }
+
+    return {nextAlarmIndex, nextAlarm};
+}
+
+void setNextAlarm(DateTime now, JsonArray autoStarts)
+{
+    if (autoStarts.size() == 0)
+    {
+        Serial.println("couldn't set alarm because no autostarts configured yet.");
+    }
+
+    Serial.print("setNextAlarm() for ");
+    Serial.println(now.toString("YYYY-MM-DD"));
+
+    NextAlarmResult nextAlarm = getNextAlarm(now, autoStarts);
+
+    Serial.print("nextAlarm index ");
+    Serial.println(nextAlarm.index);
+
+    if (nextAlarm.index == 255)
+    {
+        // no alarm found for current day
+        Serial.println("no next alarm found for today");
+
+        // try to find alarm for next day
+        DateTime nextDay = now + TimeSpan(1, 0, 0, 0);
+        setNextAlarm(nextDay, autoStarts);
+    }
+    else
+    {
+        Serial.print("next alarm found ");
+        Serial.println(nextAlarm.dateTime.toString("YYYY-MM-DD hh:mm"));
+
+        JsonVariant nextAutoStart = autoStarts.getElement(nextAlarm.index);
+        nextAlarmWateringDuration = nextAutoStart["duration"].as<unsigned int>();
+
+        // set next alarm
+
+        rtc.clearAlarm(1);
+
+        if (!rtc.setAlarm1(nextAlarm.dateTime, DS3231_A1_Hour))
+        {
+            Serial.println("Error, alarm wasn't set!");
+        }
+    }
+}
+
+void setNextAlarm()
+{
+    StaticJsonDocument<1024> doc = getAutoStartsJson();
+    JsonArray autoStarts = doc.as<JsonArray>();
+
+    DateTime now = rtc.now();
+
+    setNextAlarm(now, autoStarts);
 }
 
 /*void goSleep(unsigned long seconds)
@@ -338,10 +444,6 @@ void setupRTC()
     {
         Serial.println("RTC time isn't configured");
     }
-    else
-    {
-        timeWasSynced = true;
-    }
 
     //we don't need the 32K Pin, so disable it
     rtc.disable32K();
@@ -482,105 +584,6 @@ void setupWebserver()
     server.begin();
 }
 
-DateTime createDateTimeFromAlarmTime(DateTime day, String alarmTime)
-{
-    // create date string in format: "2020-06-25T15:29:37"
-    StringPrint dateStream;
-    dateStream.print(day.toString("YYYY-MM-DD"));
-    dateStream.print("T");
-    dateStream.print(alarmTime); // e.g. "08:45"
-    dateStream.print(":00");     // add seconds
-
-    String dateString = dateStream.str();
-    DateTime date = DateTime(const_cast<char *>(dateString.c_str()));
-
-    return date;
-}
-
-struct NextAlarmResult
-{
-    byte index;
-    DateTime dateTime;
-};
-
-NextAlarmResult getNextAlarm(DateTime now, JsonArray autoStarts)
-{
-    int32_t minTotalSecondsDiff = INT32_MAX;
-    byte nextAlarmIndex = 255;
-    DateTime nextAlarm;
-
-    byte alarmIndex = 0;
-
-    for (JsonVariant autoStart : autoStarts)
-    {
-        DateTime alarm = createDateTimeFromAlarmTime(now, autoStart["time"]);
-
-        if (alarm > now)
-        {
-            TimeSpan diff = alarm - now;
-            int32_t totalSecondsDiff = diff.totalseconds();
-
-            if (totalSecondsDiff < minTotalSecondsDiff)
-            {
-                minTotalSecondsDiff = totalSecondsDiff;
-                nextAlarmIndex = alarmIndex;
-                nextAlarm = alarm;
-            }
-        }
-
-        alarmIndex++;
-    }
-
-    return {nextAlarmIndex, nextAlarm};
-}
-
-void setNextAlarm(DateTime now, JsonArray autoStarts)
-{
-    if (autoStarts.size() == 0)
-    {
-        Serial.println("couldn't set alarm because no autostarts configured yet.");
-    }
-
-    NextAlarmResult nextAlarm = getNextAlarm(now, autoStarts);
-
-    if (nextAlarm.index == 255)
-    {
-        // no alarm found for current day
-        Serial.println("no next alarm found for today");
-
-        // try to find alarm for next day
-        DateTime nextDay = now + TimeSpan(1, 0, 0, 0);
-        setNextAlarm(nextDay, autoStarts);
-    }
-    else
-    {
-        Serial.print("next alarm found ");
-        Serial.println(nextAlarm.dateTime.toString("YYYY-MM-DD hh:mm"));
-
-        JsonVariant nextAutoStart = autoStarts.getElement(nextAlarm.index);
-        nextAlarmWateringDuration = nextAutoStart["duration"].as<unsigned int>();
-
-        // set next alarm
-
-        rtc.clearAlarm(1);
-
-        if (!rtc.setAlarm1(nextAlarm.dateTime, DS3231_A1_Hour))
-        {
-            Serial.println("Error, alarm wasn't set!");
-        }
-    }
-}
-
-void setNextAlarm()
-{
-    StaticJsonDocument<1024> doc = getAutoStartsJson();
-    JsonArray autoStarts = doc.as<JsonArray>();
-
-    DateTime now = rtc.now();
-
-    setNextAlarm(now, autoStarts);
-}
-
 void setup()
 {
     Serial.begin(115200);
@@ -642,28 +645,8 @@ void setup()
     setupNTP();
     setupWebserver();
 
-    setNextAlarm();
-
     detect_wakeup_reason();
 }
-
-/*
-bool isAlarmFired(String timeValue)
-{
-    unsigned int alarmHour = timeValue.substring(0, 2).toInt();
-    unsigned int alarmMinute = timeValue.substring(3, 5).toInt();
-
-    Serial.print(timeValue);
-    Serial.print(" - ");
-    Serial.print(alarmHour);
-    Serial.print("_");
-    Serial.println(alarmMinute);
-
-    DateTime now = rtc.now();
-
-    return now.hour() == alarmHour && now.minute() == alarmMinute;
-}
-*/
 
 void loop()
 {
@@ -683,8 +666,16 @@ void loop()
 
                 lastInfoSend = millis();
             }
+
+            if (!wasInitAlarmsSet)
+            {
+                wasInitAlarmsSet = true;
+
+                setNextAlarm();
+            }
         }
 
+        /*
         if (rtc.alarmFired(1))
         {
             Serial.println("alarm fired");
@@ -693,5 +684,6 @@ void loop()
 
             setNextAlarm();
         }
+        */
     }
 }
