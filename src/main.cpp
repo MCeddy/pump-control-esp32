@@ -10,7 +10,6 @@
 #include <StreamUtils.h>
 #include <ESPmDNS.h>
 #include <RTClib.h>
-//#include<time.h>
 
 #include "config.h"
 
@@ -42,9 +41,10 @@ bool isPortalActive = false;
 bool isWifiSuccess = false;
 bool timeWasSynced = false;
 
+unsigned int nextAlarmWateringDuration;
+
 // (old) timers
 unsigned long lastInfoSend = 0;
-unsigned long lastAlarmCheck = 0;
 
 void onWiFiEvent(WiFiEvent_t event)
 {
@@ -334,12 +334,24 @@ void setupRTC()
         abort();
     }
 
+    if (rtc.lostPower())
+    {
+        Serial.println("RTC time isn't configured");
+    }
+    else
+    {
+        timeWasSynced = true;
+    }
+
     //we don't need the 32K Pin, so disable it
     rtc.disable32K();
 
     // stop oscillating signals at SQW Pin
     // otherwise setAlarm1 will fail
     rtc.writeSqwPinMode(DS3231_OFF);
+
+    rtc.clearAlarm(1);
+    rtc.clearAlarm(2);
 }
 
 void setupNTP()
@@ -470,6 +482,105 @@ void setupWebserver()
     server.begin();
 }
 
+DateTime createDateTimeFromAlarmTime(DateTime day, String alarmTime)
+{
+    // create date string in format: "2020-06-25T15:29:37"
+    StringPrint dateStream;
+    dateStream.print(day.toString("YYYY-MM-DD"));
+    dateStream.print("T");
+    dateStream.print(alarmTime); // e.g. "08:45"
+    dateStream.print(":00");     // add seconds
+
+    String dateString = dateStream.str();
+    DateTime date = DateTime(const_cast<char *>(dateString.c_str()));
+
+    return date;
+}
+
+struct NextAlarmResult
+{
+    byte index;
+    DateTime dateTime;
+};
+
+NextAlarmResult getNextAlarm(DateTime now, JsonArray autoStarts)
+{
+    int32_t minTotalSecondsDiff = INT32_MAX;
+    byte nextAlarmIndex = 255;
+    DateTime nextAlarm;
+
+    byte alarmIndex = 0;
+
+    for (JsonVariant autoStart : autoStarts)
+    {
+        DateTime alarm = createDateTimeFromAlarmTime(now, autoStart["time"]);
+
+        if (alarm > now)
+        {
+            TimeSpan diff = alarm - now;
+            int32_t totalSecondsDiff = diff.totalseconds();
+
+            if (totalSecondsDiff < minTotalSecondsDiff)
+            {
+                minTotalSecondsDiff = totalSecondsDiff;
+                nextAlarmIndex = alarmIndex;
+                nextAlarm = alarm;
+            }
+        }
+
+        alarmIndex++;
+    }
+
+    return {nextAlarmIndex, nextAlarm};
+}
+
+void setNextAlarm(DateTime now, JsonArray autoStarts)
+{
+    if (autoStarts.size() == 0)
+    {
+        Serial.println("couldn't set alarm because no autostarts configured yet.");
+    }
+
+    NextAlarmResult nextAlarm = getNextAlarm(now, autoStarts);
+
+    if (nextAlarm.index == 255)
+    {
+        // no alarm found for current day
+        Serial.println("no next alarm found for today");
+
+        // try to find alarm for next day
+        DateTime nextDay = now + TimeSpan(1, 0, 0, 0);
+        setNextAlarm(nextDay, autoStarts);
+    }
+    else
+    {
+        Serial.print("next alarm found ");
+        Serial.println(nextAlarm.dateTime.toString("YYYY-MM-DD hh:mm"));
+
+        JsonVariant nextAutoStart = autoStarts.getElement(nextAlarm.index);
+        nextAlarmWateringDuration = nextAutoStart["duration"].as<unsigned int>();
+
+        // set next alarm
+
+        rtc.clearAlarm(1);
+
+        if (!rtc.setAlarm1(nextAlarm.dateTime, DS3231_A1_Hour))
+        {
+            Serial.println("Error, alarm wasn't set!");
+        }
+    }
+}
+
+void setNextAlarm()
+{
+    StaticJsonDocument<1024> doc = getAutoStartsJson();
+    JsonArray autoStarts = doc.as<JsonArray>();
+
+    DateTime now = rtc.now();
+
+    setNextAlarm(now, autoStarts);
+}
+
 void setup()
 {
     Serial.begin(115200);
@@ -531,9 +642,12 @@ void setup()
     setupNTP();
     setupWebserver();
 
+    setNextAlarm();
+
     detect_wakeup_reason();
 }
 
+/*
 bool isAlarmFired(String timeValue)
 {
     unsigned int alarmHour = timeValue.substring(0, 2).toInt();
@@ -549,6 +663,7 @@ bool isAlarmFired(String timeValue)
 
     return now.hour() == alarmHour && now.minute() == alarmMinute;
 }
+*/
 
 void loop()
 {
@@ -570,33 +685,13 @@ void loop()
             }
         }
 
-        if (lastAlarmCheck == 0 || millis() - lastAlarmCheck >= ALARM_CHECK_INTERVAL)
+        if (rtc.alarmFired(1))
         {
-            StaticJsonDocument<1024> doc = getAutoStartsJson();
-            JsonArray autoStarts = doc.as<JsonArray>();
+            Serial.println("alarm fired");
 
-            Serial.print("autostart count ");
-            Serial.println(autoStarts.size());
+            // TODO start watering
 
-            for (JsonVariant autoStart : autoStarts)
-            {
-                if (isAlarmFired(autoStart["time"]))
-                {
-                    unsigned int duration = autoStart["duration"].as<int>();
-
-                    Serial.print("Alarm was fired - watering for ");
-                    Serial.print(duration);
-                    Serial.println(" seconds");
-                }
-            }
-
-            lastAlarmCheck = millis();
+            setNextAlarm();
         }
-
-        /*if (rtc.alarmFired(1))
-        {
-            Serial.println("Alarm fired");
-            rtc.clearAlarm(1);
-        }*/
     }
 }
