@@ -23,6 +23,13 @@ extern "C"
 #define DEVICE_ID (Sprintf("%06" PRIx64, ESP.getEfuseMac() >> 24)) // unique device ID
 #define uS_TO_S_FACTOR 1000000                                     // Conversion factor for micro seconds to seconds
 
+struct NextAlarmResult
+{
+    byte index;
+    DateTime dateTime;
+    unsigned int wateringDuration;
+};
+
 const char *autoStartsFilename = "/auto-starts";
 
 String version = "0.1.0";
@@ -42,7 +49,7 @@ bool isWifiSuccess = false;
 bool timeWasSynced = false;
 bool wasInitAlarmsSet = false;
 
-unsigned int nextAlarmWateringDuration;
+NextAlarmResult nextAlarmResult;
 
 // (old) timers
 unsigned long lastInfoSend = 0;
@@ -172,12 +179,6 @@ DateTime createDateTimeFromAlarmTime(DateTime day, String alarmTime)
     return date;
 }
 
-struct NextAlarmResult
-{
-    byte index;
-    DateTime dateTime;
-};
-
 NextAlarmResult getNextAlarm(DateTime now, JsonArray autoStarts)
 {
     int32_t minTotalSecondsDiff = INT32_MAX;
@@ -206,7 +207,15 @@ NextAlarmResult getNextAlarm(DateTime now, JsonArray autoStarts)
         alarmIndex++;
     }
 
-    return {nextAlarmIndex, nextAlarm};
+    unsigned int nextAlarmWateringDuration = 0;
+
+    if (nextAlarmIndex != 255)
+    {
+        JsonVariant autoStart = autoStarts.getElement(nextAlarmIndex);
+        nextAlarmWateringDuration = autoStart["duration"].as<unsigned int>();
+    }
+
+    return {nextAlarmIndex, nextAlarm, nextAlarmWateringDuration};
 }
 
 void setNextAlarm(DateTime now, JsonArray autoStarts)
@@ -243,23 +252,26 @@ void setNextAlarm(DateTime now, JsonArray autoStarts)
         Serial.print("next alarm found ");
         Serial.println(nextAlarmDateString);
 
-        JsonVariant nextAutoStart = autoStarts.getElement(nextAlarm.index);
-        nextAlarmWateringDuration = nextAutoStart["duration"].as<unsigned int>();
-
         // set next alarm
-
-        rtc.clearAlarm(1);
-
         if (!rtc.setAlarm1(nextAlarm.dateTime, DS3231_A1_Hour))
         {
             Serial.println("Error, alarm wasn't set!");
         }
+
+        nextAlarmResult = nextAlarm;
     }
 }
 
 void setNextAlarm()
 {
     Serial.println("setNextAlarm()");
+
+    // reset old alarm states
+
+    rtc.clearAlarm(1);
+
+    nextAlarmResult.index = 255; // 255 = no next alarm
+    nextAlarmResult.wateringDuration = 0;
 
     StaticJsonDocument<1024> doc = getAutoStartsJson();
     JsonArray autoStarts = doc.as<JsonArray>();
@@ -519,6 +531,26 @@ void setupWebserver()
 
         StringStream stream;
         auto size = serializeJson(autoStarts, stream);
+
+        request->send(stream, "application/json", size);
+    });
+
+    server.on("/api/next-auto-start", HTTP_GET, [](AsyncWebServerRequest *request) {
+        if (nextAlarmResult.index == 255)
+        {
+            request->send(204);
+            return;
+        }
+
+        char date[24] = "DD-MMM-YYYYThh:mm:ss";
+        nextAlarmResult.dateTime.toString(date);
+
+        StaticJsonDocument<200> doc;
+        doc["date"] = date; // TODO format with timezone
+        doc["watering-duration"] = nextAlarmResult.wateringDuration;
+
+        StringStream stream;
+        auto size = serializeJson(doc, stream);
 
         request->send(stream, "application/json", size);
     });
