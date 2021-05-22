@@ -26,7 +26,7 @@ struct NextAlarmResult
 
 const char *autoStartsFilename = "/auto-starts";
 
-String version = "0.1.0";
+String version = "1.0.0";
 
 // timer
 TimerHandle_t wifiReconnectTimer;
@@ -57,6 +57,20 @@ char *getFormatedRtcNow()
     char charArray[strLen];
 
     dateFormat.toCharArray(charArray, strLen);
+    return now.toString(charArray);
+}
+
+/**
+ * returns the date in format "YYYY-MM-DD"
+ */
+char *getDateString(DateTime now)
+{
+    String dateFormat = "YYYY-MM-DD";
+    int strLen = dateFormat.length() + 1;
+    char charArray[strLen];
+
+    dateFormat.toCharArray(charArray, strLen);
+
     return now.toString(charArray);
 }
 
@@ -167,28 +181,30 @@ void hardReset()
     //WiFiSettings.portal();
 }
 
-DateTime createDateTimeFromAlarmTime(DateTime day, String alarmTime)
+DateTime createDateTimeFromAlarmTime(DateTime day, String timeString)
 {
-    char dayString[12] = "YYYY-MM-DD";
-    day.toString(dayString);
+    char *dateString = getDateString(day);
 
     // create date string in format: "2020-06-25T15:29:37"
     StringPrint dateStream;
-    dateStream.print(dayString);
+    dateStream.print(dateString);
     dateStream.print("T");
-    dateStream.print(alarmTime); // e.g. "08:45"
-    dateStream.print(":00");     // add seconds
+    dateStream.print(timeString); // e.g. "08:45"
+    dateStream.print(":00");      // add seconds
 
-    String dateString = dateStream.str();
-    DateTime date = DateTime(const_cast<char *>(dateString.c_str()));
+    String completeDateString = dateStream.str();
+    int strLen = completeDateString.length() + 1;
+    char charArray[strLen];
 
-    return date;
+    completeDateString.toCharArray(charArray, strLen);
+
+    return DateTime(charArray);
 }
 
 NextAlarmResult getNextAlarm(DateTime now, JsonArray autoStarts)
 {
     int32_t minTotalSecondsDiff = INT32_MAX;
-    byte nextAlarmIndex = 255;
+    byte nextAlarmIndex = 255; // 255 = no next alarm
     DateTime nextAlarm;
 
     byte alarmIndex = 0;
@@ -215,7 +231,7 @@ NextAlarmResult getNextAlarm(DateTime now, JsonArray autoStarts)
 
     unsigned int nextAlarmWateringDuration = 0;
 
-    if (nextAlarmIndex != 255)
+    if (nextAlarmIndex != 255) // 255 = no next alarm
     {
         JsonVariant autoStart = autoStarts.getElement(nextAlarmIndex);
         nextAlarmWateringDuration = autoStart["duration"].as<unsigned int>();
@@ -224,7 +240,7 @@ NextAlarmResult getNextAlarm(DateTime now, JsonArray autoStarts)
     return {nextAlarmIndex, nextAlarm, nextAlarmWateringDuration};
 }
 
-void setNextAlarm(DateTime now, JsonArray autoStarts)
+void setNextAlarm(DateTime now, JsonArray autoStarts, bool tryNextDay)
 {
     if (autoStarts.size() == 0)
     {
@@ -232,23 +248,29 @@ void setNextAlarm(DateTime now, JsonArray autoStarts)
     }
 
     Serial.print("setNextAlarm for ");
-    char dateString[12] = "YYYY-MM-DD";
-    now.toString(dateString);
-    Serial.println(dateString);
+    Serial.println(getDateString(now));
 
     NextAlarmResult nextAlarm = getNextAlarm(now, autoStarts);
 
     Serial.print("nextAlarm index ");
     Serial.println(nextAlarm.index);
 
-    if (nextAlarm.index == 255)
+    if (nextAlarm.index == 255) // 255 = no next alarm
     {
         // no alarm found for current day
-        Serial.println("no next alarm found for today");
+        Serial.print("no next alarm found for today: ");
+
+        if (!tryNextDay)
+        {
+            Serial.println("stop searching");
+            return;
+        }
+
+        Serial.println("try find alarm on next day");
 
         // try to find alarm for next day
         DateTime nextDay = now + TimeSpan(1, 0, 0, 0);
-        setNextAlarm(nextDay, autoStarts);
+        setNextAlarm(nextDay, autoStarts, false);
     }
     else
     {
@@ -273,8 +295,8 @@ void setNextAlarm()
     Serial.println("setNextAlarm()");
 
     // reset old alarm states
-
     rtc.clearAlarm(1);
+    rtc.clearAlarm(2);
 
     nextAlarmResult.index = 255; // 255 = no next alarm
     nextAlarmResult.wateringDuration = 0;
@@ -283,8 +305,7 @@ void setNextAlarm()
     JsonArray autoStarts = doc.as<JsonArray>();
 
     DateTime now = rtc.now();
-
-    setNextAlarm(now, autoStarts);
+    setNextAlarm(now, autoStarts, true);
 }
 
 /*void goSleep(unsigned long seconds)
@@ -553,7 +574,7 @@ void setupWebserver()
     });
 
     server.on("/api/next-auto-start", HTTP_GET, [](AsyncWebServerRequest *request) {
-        if (nextAlarmResult.index == 255)
+        if (nextAlarmResult.index == 255) // 255 = no next alarm
         {
             request->send(204);
             return;
@@ -730,7 +751,7 @@ void loop()
             {
                 wasInitAlarmsSet = true;
 
-                //setNextAlarm();
+                setNextAlarm();
             }
         }
 
@@ -738,12 +759,12 @@ void loop()
         {
             Serial.println("alarm fired");
 
-            /*if (nextAlarmResult.index != 255)
+            if (nextAlarmResult.index != 255)
             {
                 startWaterpump(nextAlarmResult.wateringDuration);
             }
 
-            setNextAlarm();*/
+            setNextAlarm();
         }
     }
 }
