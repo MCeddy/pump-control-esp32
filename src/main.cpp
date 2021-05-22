@@ -13,12 +13,6 @@
 
 #include "config.h"
 
-extern "C"
-{
-#include "freertos/FreeRTOS.h"
-#include "freertos/timers.h"
-}
-
 #define Sprintf(f, ...) ({ char* s; asprintf(&s, f, __VA_ARGS__); String r = s; free(s); r; })
 #define DEVICE_ID (Sprintf("%06" PRIx64, ESP.getEfuseMac() >> 24)) // unique device ID
 #define uS_TO_S_FACTOR 1000000                                     // Conversion factor for micro seconds to seconds
@@ -53,6 +47,18 @@ NextAlarmResult nextAlarmResult;
 
 // (old) timers
 unsigned long lastInfoSend = 0;
+
+char *getFormatedRtcNow()
+{
+    DateTime now = rtc.now();
+
+    String dateFormat = "YYYY/MM/DD hh:mm:ss";
+    int strLen = dateFormat.length() + 1;
+    char charArray[strLen];
+
+    dateFormat.toCharArray(charArray, strLen);
+    return now.toString(charArray);
+}
 
 void onWiFiEvent(WiFiEvent_t event)
 {
@@ -113,8 +119,8 @@ StaticJsonDocument<1024> getInfoJson()
 
     JsonObject system = doc.createNestedObject("system");
     system["deviceId"] = DEVICE_ID;
-    system["freeHeap"] = ESP.getFreeHeap(); // in V
-    system["time"] = NTP.getTimeDateStringForJS();
+    system["freeHeap"] = ESP.getFreeHeap(); // in bytes
+    system["time"] = getFormatedRtcNow();   //NTP.getTimeDateStringForJS();
     system["uptime"] = NTP.getUptimeString();
 
     JsonObject fileSystem = doc.createNestedObject("fileSystem");
@@ -467,6 +473,7 @@ void setupRTC()
     if (rtc.lostPower())
     {
         Serial.println("RTC time isn't configured");
+        //rtc.adjust(staticDate);
     }
 
     //we don't need the 32K Pin, so disable it
@@ -491,11 +498,19 @@ void setupNTP()
         {
             Serial.println("NTP synced");
 
-            timeWasSynced = true;
-
             char *iso8601dateTime = NTP.getTimeDateString(time(NULL), "%04Y-%02m-%02dT%02H:%02M:%02S");
-            rtc.adjust(DateTime(iso8601dateTime));
+            DateTime date = DateTime(iso8601dateTime);
+            Serial.println(date.isValid());
 
+            // set time twice because of data errors (RTC year was set to "2165" on errors)
+
+            delay(200);
+            rtc.adjust(date);
+
+            delay(200);
+            rtc.adjust(date);
+
+            timeWasSynced = true;
             break;
         }
         case partlySync:
@@ -702,28 +717,11 @@ void loop()
         {
             if (lastInfoSend == 0 || millis() - lastInfoSend >= UPDATE_INTERVAL)
             {
-                /*Serial.print("time: ");
-                Serial.println(NTP.getTimeDateString());*/
+                Serial.print("NTP time: ");
+                Serial.println(NTP.getTimeDateString());
 
-                /*
-                time_t tnow = time(nullptr);
-                Serial.println(ctime(&tnow));
-                */
-
-                DateTime now = rtc.now();
-
-                Serial.print(now.year(), DEC);
-                Serial.print('/');
-                Serial.print(now.month(), DEC);
-                Serial.print('/');
-                Serial.print(now.day(), DEC);
-                Serial.print(' ');
-                Serial.print(now.hour(), DEC);
-                Serial.print(':');
-                Serial.print(now.minute(), DEC);
-                Serial.print(':');
-                Serial.print(now.second(), DEC);
-                Serial.println();
+                Serial.print("RTC time: ");
+                Serial.println(getFormatedRtcNow());
 
                 lastInfoSend = millis();
             }
@@ -732,7 +730,7 @@ void loop()
             {
                 wasInitAlarmsSet = true;
 
-                setNextAlarm();
+                //setNextAlarm();
             }
         }
 
@@ -740,12 +738,12 @@ void loop()
         {
             Serial.println("alarm fired");
 
-            if (nextAlarmResult.index != 255)
+            /*if (nextAlarmResult.index != 255)
             {
                 startWaterpump(nextAlarmResult.wateringDuration);
             }
 
-            setNextAlarm();
+            setNextAlarm();*/
         }
     }
 }
