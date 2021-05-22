@@ -334,7 +334,7 @@ void setupOTA()
 {
     ArduinoOTA
         .setHostname(WiFiSettings.hostname.c_str())
-        .setPassword(WiFiSettings.password.c_str())
+        //.setPassword(WiFiSettings.password.c_str())
         .onStart([]() {
             isUpdating = true;
 
@@ -436,7 +436,9 @@ void startWaterpump(unsigned long seconds)
     // start watering
     digitalWrite(WATERPUMP_PIN, HIGH);
 
-    Serial.println("watering started");
+    Serial.print("watering started for ");
+    Serial.print(seconds);
+    Serial.println(" seconds");
 }
 
 void abortWaterpump()
@@ -658,9 +660,9 @@ void setup()
         ArduinoOTA.handle();
     };
 
-    WiFiSettings.onConfigSaved = []() {
+    /*WiFiSettings.onConfigSaved = []() {
         ESP.restart();
-    };
+    };*/
 
     WiFiSettings.onSuccess = []() {
         isWifiSuccess = true;
@@ -734,15 +736,16 @@ void loop()
             }
         }
 
-        /*
-        if (rtc.alarmFired(1))
+        if (timeWasSynced && rtc.alarmFired(1))
         {
             Serial.println("alarm fired");
 
-            // TODO start watering
+            if (nextAlarmResult.index != 255)
+            {
+                startWaterpump(nextAlarmResult.wateringDuration);
+            }
 
             setNextAlarm();
         }
-        */
     }
 }
