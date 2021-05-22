@@ -521,7 +521,6 @@ void setupNTP()
 
             char *iso8601dateTime = NTP.getTimeDateString(time(NULL), "%04Y-%02m-%02dT%02H:%02M:%02S");
             DateTime date = DateTime(iso8601dateTime);
-            Serial.println(date.isValid());
 
             // set time twice because of data errors (RTC year was set to "2165" on errors)
 
